@@ -109,7 +109,7 @@ if parse_error:
 elif parsed_expr is not None:
     st.latex(sp.latex(parsed_expr))
 else:
-    st.info("Nhập một biểu thức để bắt đầu…")
+    st.info("Đang đợi nhập biểu thức ...")
 
 # ====== Kết quả ======
 result_placeholder = st.empty()
