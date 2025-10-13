@@ -22,19 +22,27 @@ LOCAL = {
     'ln': sp.log, 'log': sp.log,
     'log10': lambda a: sp.log(a, 10),
     'log2':  lambda a: sp.log(a, 2),
+    'exp': sp.exp,  # tiện nhập exp(t)
     'sin': sp.sin, 'cos': sp.cos, 'tan': sp.tan,
     'asin': sp.asin, 'acos': sp.acos, 'atan': sp.atan,
 }
 
 def parse_user_expr(s: str):
-    """Parse KHÔNG evaluate để giữ đúng cấu trúc nhập (hiển thị LaTeX đầy đủ)."""
+    """Parse KHÔNG evaluate để giữ đúng cấu trúc nhập vào (hiển thị LaTeX đầy đủ)."""
     s = s.strip().replace('÷', '/').replace('×', '*').replace('−', '-')
     s = s.replace('^', '**').replace('√(', 'sqrt(')
     return parse_expr(s, local_dict=LOCAL, transformations=TRANSFORMS, evaluate=False)
 
-# ====== Định nghĩa Caputo–Hadamard ======
+def get_t_symbol(expr: sp.Expr) -> sp.Symbol:
+    """Lấy đúng bản thể Symbol 't' trong biểu thức (nếu có), nếu không thì tạo Symbol('t')."""
+    for s in expr.free_symbols:
+        if s.name == 't':
+            return s
+    return sp.Symbol('t')
+
+# ====== Định nghĩa Caputo–Hadamard (trái) theo biến t ======
 def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
-    """Toán tử δ = t d/dt lặp k lần: (δ^k f)(t) với var đóng vai trò 't'."""
+    """Toán tử δ = t d/dt lặp k lần: (δ^k f)(t)."""
     g = sp.simplify(expr)
     for _ in range(k):
         g = sp.simplify(var * sp.diff(g, var))
@@ -42,11 +50,9 @@ def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
 
 def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: sp.Expr) -> sp.Expr:
     r"""
-    Đạo hàm Caputo–Hadamard trái bậc alpha trên (a0, ·):
-    - Nếu alpha = n ∈ ℕ: (δ^n f)(x) với δ = x d/dx.
-    - Nếu alpha = 0: f(x).
-    - Nếu n-1 < alpha < n:
-        1/Γ(n-α) ∫_a0^x (ln(x/t))^{n-α-1} (δ^n f)(t) dt / t.
+    {}^{CH}D^{α}_{a^+} f(t) =
+      - Nếu α = n ∈ ℕ: (δ^n f)(t), δ = t d/dt.
+      - Nếu n-1 < α < n: (1/Γ(n-α)) ∫_a^t (ln(t/τ))^{n-α-1} (δ^n f)(τ) dτ / τ.
     """
     alpha = sp.nsimplify(alpha)
     a0 = sp.nsimplify(a0)
@@ -54,7 +60,7 @@ def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0
     if (alpha.is_real is False) or (alpha.is_number and alpha < 0):
         raise ValueError("α phải là số thực và không âm.")
     if a0.is_number and (a0 <= 0):
-        raise ValueError("Mốc trái a phải > 0 để ln(x/t) có nghĩa.")
+        raise ValueError("Mốc trái a phải > 0 để ln(t/τ) có nghĩa.")
 
     if alpha.is_integer is True:
         n = int(alpha)
@@ -63,68 +69,40 @@ def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0
         return delta_operator(expr, var, n)
 
     n = int(sp.ceiling(alpha))
-    t = sp.Symbol(f"{var.name}_t", real=True, positive=True)
-    delta_n_f = delta_operator(sp.simplify(expr), var, n).subs({var: t})
+    tau = sp.Symbol(f"{var.name}_tau", real=True, positive=True)
+    delta_n_f = delta_operator(sp.simplify(expr), var, n).subs({var: tau})
     kernel_pow = n - alpha - 1
-    integrand = delta_n_f * (sp.log(var / t))**(kernel_pow) / t
-    return sp.gamma(n - alpha)**-1 * sp.Integral(sp.simplify(integrand), (t, a0, var))
+    integrand = delta_n_f * (sp.log(var / tau))**(kernel_pow) / tau
+    return sp.gamma(n - alpha)**-1 * sp.Integral(sp.simplify(integrand), (tau, a0, var))
 
 # ====== State ======
-if "last_result_expr" not in st.session_state:
-    st.session_state.last_result_expr: Optional[sp.Expr] = None
+st.set_page_config(page_title="Mô phỏng đạo hàm theo t: cổ điển & Caputo–Hadamard", layout="wide")
+if "last_classic" not in st.session_state:
+    st.session_state.last_classic: Optional[sp.Expr] = None
+if "last_ch" not in st.session_state:
+    st.session_state.last_ch: Optional[sp.Expr] = None
 
-st.set_page_config(page_title="Mô phỏng đạo hàm cổ điển & Caputo–Hadamard", layout="wide")
-st.title("Mô phỏng đạo hàm cổ điển & Caputo–Hadamard")
+st.title("Mô phỏng đạo hàm theo biến t: cổ điển & Caputo–Hadamard")
 
 # ====== Sidebar ======
 with st.sidebar:
-    st.markdown("### Hướng dẫn nhanh")
-    st.markdown(
-        "- Nhập hàm \(f(x,y,z,t)\)\n"
-        "- Chọn biến đạo hàm, bậc α; với C–H nhập thêm **mốc trái a>0**\n"
-        "- Bấm **Tính ĐH cổ điển** hoặc **Tính ĐH C–H**\n"
-        "- Vẽ đồ thị: chọn biến vẽ, đoạn \([a,b]\), nhập **giá trị các biến khác** rồi bấm **Vẽ đồ thị**"
-    )
-    st.markdown("---")
-    st.markdown("**Mẹo nhập:** `^` (lũy thừa); `sqrt(...)`, `ln(...)`, `sin(...)`, ...")
-    st.markdown("---")
+    st.markdown("### Thiết lập")
+    alpha_text = st.text_input("Bậc α (cho C–H):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
     a0_text = st.text_input("Mốc trái a (>0) cho C–H:", value="1", help="Ví dụ: 1, 2, E, ...")
+    st.markdown("---")
+    st.caption("Lưu ý: Mọi đạo hàm đều theo **biến t**. Khi vẽ, cần nhập giá trị các biến khác (nếu có).")
 
-# ====== Nhập biểu thức & lựa chọn biến ======
-col_input, col_opts = st.columns([3, 2], vertical_alignment="bottom")
-with col_input:
-    expr_text = st.text_input("Nhập biểu thức cần tính:", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
-with col_opts:
-    alpha_text = st.text_input("Bậc α (cho Caputo–Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
-    var_diff_default = "x"
-
-# Quét biến từ biểu thức (nếu có)
-vars_list: List[str] = ['x', 'y', 'z', 't']
+# ====== Nhập biểu thức ======
+expr_text = st.text_input("Nhập biểu thức f(t, ...):", value="", placeholder="Ví dụ: exp(t) + t^2/(1+x^2)")
 parsed_expr = None
 parse_error = None
 if expr_text.strip():
     try:
         parsed_expr = parse_user_expr(expr_text)
-        syms = sorted([s.name for s in parsed_expr.free_symbols])
-        if syms:
-            vars_list = syms
-            var_diff_default = syms[0]
     except Exception as e:
         parse_error = str(e)
 
-left, right = st.columns([1, 1])
-with left:
-    var_diff = st.selectbox("Biến đạo hàm:", options=vars_list, index=max(0, vars_list.index(var_diff_default)))
-with right:
-    st.markdown("&nbsp;")
-    b1, b2 = st.columns(2)
-    with b1:
-        do_diff = st.button("Tính ĐH cổ điển", use_container_width=True)
-    with b2:
-        do_caputo = st.button("Tính ĐH C–H", use_container_width=True)
-
-# Hiển thị công thức gốc
-st.markdown("#### Công thức đang nhập")
+st.markdown("#### Công thức đang nhập (LaTeX)")
 if parse_error:
     st.error(f"Biểu thức không hợp lệ: {parse_error}")
 elif parsed_expr is not None:
@@ -132,43 +110,50 @@ elif parsed_expr is not None:
 else:
     st.info("Đang đợi nhập biểu thức ...")
 
-# ====== Kết quả ======
+# ====== Nút tính đạo hàm (theo t) ======
+col_btn = st.columns(2)
+with col_btn[0]:
+    do_diff = st.button("Tính đạo hàm cổ điển (theo t)", use_container_width=True)
+with col_btn[1]:
+    do_ch = st.button("Tính đạo hàm Caputo–Hadamard (theo t)", use_container_width=True)
+
 result_placeholder = st.empty()
 
-def show_expr_result(title: str, expr: sp.Expr):
+def show_expr_result(title: str, expr: sp.Expr, key_store: str):
     with result_placeholder.container():
         st.markdown(f"### {title}")
         try:
             st.latex(sp.latex(expr))
         except Exception:
             st.code(str(expr))
-    st.session_state.last_result_expr = expr
+    st.session_state[key_store] = expr
 
-# Đạo hàm cổ điển
+# === Xử lý tính toán ===
 if do_diff:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
-            var = sp.Symbol(var_diff, real=True)
-            d = sp.diff(sp.simplify(parsed_expr), var)
-            show_expr_result("Kết quả đạo hàm cổ điển (d/d{"+var_diff+"})", d)
+            t = get_t_symbol(parsed_expr)
+            if t not in parsed_expr.free_symbols:
+                st.warning("Biểu thức không phụ thuộc t; đạo hàm theo t bằng 0.")
+            d = sp.diff(sp.simplify(parsed_expr), t)
+            show_expr_result("f'(t) – đạo hàm cổ điển theo t", d, "last_classic")
         except Exception as e:
             st.error(f"Không tính được đạo hàm cổ điển: {e}")
 
-# Đạo hàm Caputo–Hadamard
-if do_caputo:
+if do_ch:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
-            var = sp.Symbol(var_diff, real=True, positive=True)  # x>0 để ln(x/t) có nghĩa khi x>a>0
+            t = get_t_symbol(parsed_expr)  # dùng đúng biến t trong biểu thức
             alpha = sp.nsimplify(alpha_text) if alpha_text.strip() else sp.Rational(1, 2)
             a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
-            cap = caputo_hadamard_derivative(parsed_expr, var, alpha, a0)
+            ch = caputo_hadamard_derivative(parsed_expr, t, alpha, a0)
             show_expr_result(
-                f"Đạo hàm Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
-                cap
+                f"CH-f'(t) – đạo hàm Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
+                ch, "last_ch"
             )
         except Exception as e:
             st.error(f"Không tính được Caputo–Hadamard: {e}")
@@ -176,51 +161,87 @@ if do_caputo:
 st.markdown("---")
 
 # ====== Vẽ đồ thị ======
-st.subheader("Vẽ đồ thị")
-plot_col1, plot_col2, plot_col3 = st.columns([1, 1, 2])
+st.subheader("Vẽ đồ thị theo biến t")
 
-with plot_col1:
-    plot_var = st.selectbox("Biến vẽ:", options=vars_list, index=max(0, vars_list.index(var_diff_default)))
-with plot_col2:
+# Tick chọn đối tượng vẽ (mutually exclusive -> radio)
+plot_target = st.radio(
+    "Chọn đối tượng để vẽ",
+    options=["f", "f'", "CH-f'"],
+    index=0,
+    horizontal=True,
+)
+
+# Chọn đoạn [a,b]
+col_ab = st.columns(2)
+with col_ab[0]:
     a_text = st.text_input("a (trái):", "-5")
+with col_ab[1]:
     b_text = st.text_input("b (phải):", "5")
 
-# Chọn biểu thức để vẽ: ưu tiên kết quả gần nhất nếu KHÔNG phải Integral
+# Xác định biểu thức gốc để vẽ (theo lựa chọn)
 expr_to_plot: Optional[sp.Expr] = None
-if st.session_state.last_result_expr is not None and not isinstance(st.session_state.last_result_expr, sp.Integral):
-    expr_to_plot = sp.simplify(st.session_state.last_result_expr)
-elif parsed_expr is not None:
-    expr_to_plot = sp.simplify(parsed_expr)
+source_note = ""
+if plot_target == "f":
+    expr_to_plot = sp.simplify(parsed_expr) if parsed_expr is not None else None
+    source_note = "Đang vẽ: f(t)"
+elif plot_target == "f'":
+    # Ưu tiên dùng kết quả đã tính; nếu chưa, tính on-the-fly
+    if st.session_state.get("last_classic") is not None:
+        expr_to_plot = sp.simplify(st.session_state.last_classic)
+    elif parsed_expr is not None:
+        t = get_t_symbol(parsed_expr)
+        expr_to_plot = sp.diff(sp.simplify(parsed_expr), t)
+    source_note = "Đang vẽ: f'(t) (đạo hàm cổ điển)"
+else:  # "CH-f'"
+    ch_expr = st.session_state.get("last_ch")
+    if ch_expr is None and parsed_expr is not None:
+        # Tính on-the-fly nếu người dùng chưa bấm nút
+        t = get_t_symbol(parsed_expr)
+        alpha = sp.nsimplify(alpha_text) if alpha_text.strip() else sp.Rational(1, 2)
+        a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
+        ch_expr = caputo_hadamard_derivative(parsed_expr, t, alpha, a0)
+        st.session_state.last_ch = ch_expr
 
-# Nhập giá trị các biến khác
-other_vals: Dict[sp.Symbol, float] = {}
-other_inputs = st.container()
-with other_inputs:
-    if expr_to_plot is not None:
-        syms_plot = sorted([s for s in expr_to_plot.free_symbols if s.name != plot_var], key=lambda x: x.name)
-        if syms_plot:
-            st.markdown("**Giá trị các biến khác:**")
-            cols = st.columns(min(4, len(syms_plot)) or 1)
-            entered: Dict[str, str] = {}
-            for i, s in enumerate(syms_plot):
-                with cols[i % len(cols)]:
-                    entered[str(s)] = st.text_input(f"{s} =", placeholder="nhập số…", key=f"other_{s}_{i}")
-            valid = True
-            for name, txt in entered.items():
-                if txt.strip() == "":
-                    valid = False
-                else:
-                    try:
-                        other_vals[sp.Symbol(name)] = float(sp.N(sp.nsimplify(txt)))
-                    except Exception:
-                        valid = False
-                        st.error(f"Giá trị của '{name}' không hợp lệ.")
-            need_other_ok = (len(syms_plot) == 0) or valid
-        else:
-            st.caption("_(không có biến khác)_")
-            need_other_ok = True
+    if isinstance(ch_expr, sp.Integral):
+        expr_to_plot = None
+        st.info("CH-f' là **biểu thức tích phân** (α không nguyên) nên không vẽ trực tiếp. "
+                "Hãy chọn α nguyên để có δ^n f(t) và vẽ được.")
     else:
-        need_other_ok = False
+        expr_to_plot = sp.simplify(ch_expr) if ch_expr is not None else None
+    source_note = "Đang vẽ: CH-f'(t)"
+
+if source_note:
+    st.caption(source_note)
+
+# Nhập giá trị cho các biến khác (khác t)
+other_vals: Dict[sp.Symbol, float] = {}
+if expr_to_plot is not None:
+    t_var = get_t_symbol(expr_to_plot)
+    syms_plot = sorted([s for s in expr_to_plot.free_symbols if s != t_var], key=lambda x: x.name)
+
+    if syms_plot:
+        st.markdown("**Giá trị các biến khác:**")
+        cols = st.columns(min(4, len(syms_plot)) or 1)
+        entered: Dict[str, str] = {}
+        for i, s in enumerate(syms_plot):
+            with cols[i % len(cols)]:
+                entered[str(s)] = st.text_input(f"{s} =", placeholder="nhập số…", key=f"other_{s}_{i}")
+        valid = True
+        for name, txt in entered.items():
+            if txt.strip() == "":
+                valid = False
+            else:
+                try:
+                    other_vals[sp.Symbol(name)] = float(sp.N(sp.nsimplify(txt)))
+                except Exception:
+                    valid = False
+                    st.error(f"Giá trị của '{name}' không hợp lệ.")
+        need_other_ok = (len(syms_plot) == 0) or valid
+    else:
+        st.caption("_(không có biến khác ngoài t)_")
+        need_other_ok = True
+else:
+    need_other_ok = False
 
 def _safe_float(v):
     try:
@@ -239,28 +260,17 @@ def _eval_curve(f, xs: np.ndarray) -> np.ndarray:
     try:
         y = f(xs)
     except Exception:
-        # fallback: đánh giá từng điểm
         y = [_safe_float(f(float(x))) for x in xs]
 
     y = np.asarray(y)
-
-    # Scalar -> broadcast
     if y.ndim == 0:
         y = np.full_like(xs, _safe_float(y))
-
-    # (N,1) hoặc (1,N) -> (N,)
     if y.ndim > 1:
         y = np.ravel(y)
-
-    # ép float
     y = y.astype(float, copy=False)
-
-    # Complex -> xử lý
     if np.iscomplexobj(y):
         imag = np.abs(np.imag(y))
         y = np.where(imag < 1e-12, np.real(y), np.nan)
-
-    # Lọc NaN/Inf
     y[~np.isfinite(y)] = np.nan
     return y
 
@@ -283,13 +293,11 @@ if plot_btn:
         elif not need_other_ok:
             st.error("Vui lòng nhập đầy đủ và hợp lệ giá trị các biến khác.")
         else:
-            plot_sym = sp.Symbol(plot_var, real=True)
-
+            t = get_t_symbol(expr_to_plot)
             expr_plot = expr_to_plot.subs(other_vals) if other_vals else expr_to_plot
 
-            # Tạo hàm số và vẽ
             try:
-                f = sp.lambdify(plot_sym, expr_plot, modules=['numpy'])
+                f = sp.lambdify(t, expr_plot, modules=['numpy'])
             except Exception as e:
                 st.error(f"Không thể chuyển biểu thức sang hàm số: {e}")
                 f = None
@@ -298,21 +306,19 @@ if plot_btn:
                 xs = np.linspace(a, b, 800)
                 ys = _eval_curve(f, xs)
 
-                # Phòng xa: ép cùng shape
-                if ys.shape != xs.shape:
+                if ys.shape != xs.shape:  # phòng xa
                     ys = np.resize(ys, xs.shape)
 
                 if np.all(~np.isfinite(ys)):
                     st.info("Không có điểm hữu hiệu để vẽ trên [a,b].")
                 else:
-                    # Nếu hàm hằng, thông báo nhẹ
                     if float(np.nanstd(ys)) == 0.0:
-                        st.caption("Hàm (sau khi thay biến khác) là **hằng số** theo biến vẽ.")
+                        st.caption("Hàm (sau khi thay biến khác) là **hằng số** theo t.")
 
                     fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
                     ax.plot(xs, ys)
-                    ax.set_xlabel(f"{plot_sym}")
-                    ax.set_ylabel("Giá trị của hàm số")
-                    ax.set_title("Đồ thị của hàm số đang khảo sát")
+                    ax.set_xlabel("t")
+                    ax.set_ylabel("giá trị")
+                    ax.set_title(f"Đồ thị: {plot_target}")
                     ax.grid(True, alpha=0.2)
                     st.pyplot(fig)
