@@ -98,9 +98,9 @@ with right:
     st.markdown("&nbsp;")
     b1, b2 = st.columns(2)
     with b1:
-        do_diff = st.button("ĐH cổ điển", use_container_width=True)
+        do_diff = st.button("Tính ĐH cổ điển", use_container_width=True)
     with b2:
-        do_caputo = st.button("ĐH Caputo-Hadamard", use_container_width=True)
+        do_caputo = st.button("Tính ĐH Caputo-Hadamard", use_container_width=True)
 
 # Hiển thị công thức gốc
 st.markdown("#### Công thức đang nhập")
@@ -125,18 +125,18 @@ def show_expr_result(title: str, expr: sp.Expr):
 
 if do_diff:
     if not parsed_expr:
-        st.warning("Vui lòng nhập biểu thức f trước.")
+        st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
             var = sp.Symbol(var_diff)
             d = sp.diff(sp.simplify(parsed_expr), var)
-            show_expr_result("Kết quả đạo hàm thường", d)
+            show_expr_result("Kết quả đạo hàm cổ điển", d)
         except Exception as e:
-            st.error(f"Không tính được đạo hàm thường: {e}")
+            st.error(f"Không tính được đạo hàm cổ điển: {e}")
 
 if do_caputo:
     if not parsed_expr:
-        st.warning("Vui lòng nhập biểu thức f trước.")
+        st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
             var = sp.Symbol(var_diff)
@@ -147,9 +147,9 @@ if do_caputo:
                 st.error("α phải không âm (α ≥ 0).")
             else:
                 cap = caputo_derivative(parsed_expr, var, alpha)
-                show_expr_result(f"Đạo hàm Caputo bậc α = {sp.latex(alpha)}", cap)
+                show_expr_result(f"Đạo hàm bậc α = {sp.latex(alpha)}", cap)
         except Exception as e:
-            st.error(f"Không tính được Caputo: {e}")
+            st.error(f"Không tính được đạo hàm Caputo-Hadamard: {e}")
 
 st.markdown("---")
 
