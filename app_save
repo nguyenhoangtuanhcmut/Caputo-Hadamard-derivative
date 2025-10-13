@@ -215,7 +215,7 @@ if plot_btn:
             a = b = 0.0
 
         if not (np.isfinite(a) and np.isfinite(b)) or a >= b:
-            st.error("Cần a < b và là số hữu hạn.")
+            st.error("Điều kiện: a < b")
         elif not need_other_ok:
             st.error("Vui lòng nhập đầy đủ và hợp lệ giá trị các biến khác.")
         else:
