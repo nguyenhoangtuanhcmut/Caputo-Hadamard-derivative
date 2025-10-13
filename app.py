@@ -77,7 +77,7 @@ with st.sidebar:
     st.caption("Mọi đạo hàm đều theo **biến t**. Khi vẽ cần nhập giá trị các biến khác (khác t).")
 
 # Nhập biểu thức
-expr_text = st.text_input("Nhập biểu thức cần tính đạo hàm:", value="", placeholder="Ví dụ: exp(t) + x^2")
+expr_text = st.text_input("Nhập biểu thức cần tính đạo hàm:", value="", placeholder="Ví dụ: exp(t) + t^2")
 parsed_expr: Optional[sp.Expr] = None
 parse_error = None
 if expr_text.strip():
