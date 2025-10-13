@@ -38,7 +38,7 @@ def get_t_symbol(expr: sp.Expr) -> sp.Symbol:
             return s
     return sp.Symbol('t')
 
-# ========== Caputo–Hadamard (trái) theo biến t ==========
+# ========== Caputo-Hadamard (trái) theo biến t ==========
 def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
     """δ = t d/dt; trả về (δ^k f)(t)."""
     g = sp.simplify(expr)
@@ -66,18 +66,18 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
     return sp.gamma(n - alpha)**-1 * sp.Integral(integrand, (tau, a0, var))
 
 # ====================== Streamlit UI ======================
-st.set_page_config(page_title="Đạo hàm theo t: cổ điển & Caputo–Hadamard", layout="wide")
-st.title("Đạo hàm theo biến t: cổ điển & Caputo–Hadamard")
+st.set_page_config(page_title="Đạo hàm theo t: cổ điển & Caputo-Hadamard", layout="wide")
+st.title("Đạo hàm theo biến t: cổ điển & Caputo-Hadamard")
 
-# Sidebar (mốc trái a cho C–H)
+# Sidebar (mốc trái a cho C-H)
 with st.sidebar:
-    st.markdown("### Thiết lập C–H")
+    st.markdown("### Thiết lập C-H")
     a0_text = st.text_input("Mốc trái a (>0):", value="1", help="Ví dụ: 1, 2, E, ...")
     st.markdown("---")
     st.caption("Mọi đạo hàm đều theo **biến t**. Khi vẽ cần nhập giá trị các biến khác (khác t).")
 
 # Nhập biểu thức
-expr_text = st.text_input("Nhập biểu thức f(t, ...):", value="", placeholder="Ví dụ: exp(t) + t^2/(1+x^2)")
+expr_text = st.text_input("Nhập biểu thức cần tính đạo hàm:", value="", placeholder="Ví dụ: exp(t) + x^2")
 parsed_expr: Optional[sp.Expr] = None
 parse_error = None
 if expr_text.strip():
@@ -86,7 +86,7 @@ if expr_text.strip():
     except Exception as e:
         parse_error = str(e)
 
-st.markdown("#### Công thức đang nhập (LaTeX)")
+st.markdown("#### Công thức đã nhập:")
 if parse_error:
     st.error(f"Biểu thức không hợp lệ: {parse_error}")
 elif parsed_expr is not None:
@@ -94,14 +94,14 @@ elif parsed_expr is not None:
 else:
     st.info("Đang đợi nhập biểu thức ...")
 
-# ===== Nút tính đạo hàm (theo t) + ô nhập α ngay trước khi tính C–H =====
+# ===== Nút tính đạo hàm (theo t) + ô nhập α ngay trước khi tính C-H =====
 col_btn = st.columns([2, 2, 2])
 with col_btn[0]:
     do_diff = st.button("Tính đạo hàm cổ điển (theo t)", use_container_width=True)
 with col_btn[1]:
-    alpha_text = st.text_input("Bậc α cho C–H:", value="", key="alpha_input", placeholder="vd: 0.5 hoặc 2")
+    alpha_text = st.text_input("Bậc α cho C-H:", value="", key="alpha_input", placeholder="vd: 0.5 hoặc 2")
 with col_btn[2]:
-    do_ch = st.button("Tính đạo hàm Caputo–Hadamard", use_container_width=True)
+    do_ch = st.button("Tính đạo hàm Caputo-Hadamard", use_container_width=True)
 
 result_placeholder = st.empty()
 if "last_classic" not in st.session_state:
@@ -128,26 +128,26 @@ if do_diff:
             if t not in parsed_expr.free_symbols:
                 st.warning("Biểu thức không phụ thuộc t; đạo hàm theo t bằng 0.")
             d = sp.diff(sp.simplify(parsed_expr), t)
-            show_expr_result("f'(t) – đạo hàm cổ điển theo t", d, "last_classic")
+            show_expr_result("f' - đạo hàm cổ điển theo t", d, "last_classic")
         except Exception as e:
             st.error(f"Không tính được đạo hàm cổ điển: {e}")
 
-# --- Tính Caputo–Hadamard (để HIỂN THỊ) ---
+# --- Tính Caputo-Hadamard (để HIỂN THỊ) ---
 if do_ch:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     elif alpha_text.strip() == "":
-        st.warning("Vui lòng nhập bậc đạo hàm α trước khi tính C–H.")
+        st.warning("Vui lòng nhập bậc đạo hàm α trước khi tính C-H.")
     else:
         try:
             t = get_t_symbol(parsed_expr)
             alpha = sp.nsimplify(alpha_text)
             a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
             ch_expr = caputo_hadamard_symbolic(parsed_expr, t, alpha, a0)
-            show_expr_result(f"CH-f'(t) – Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
+            show_expr_result(f"CH-f'(t) - ĐH Caputo-Hadamard bậc α = {sp.latex(alpha)}, cận dưới a = {sp.latex(a0)}",
                              ch_expr, "last_ch")
         except Exception as e:
-            st.error(f"Không tính được Caputo–Hadamard: {e}")
+            st.error(f"Không tính được Caputo-Hadamard: {e}")
 
 st.markdown("---")
 
@@ -368,6 +368,6 @@ if plot_btn:
                                         else:
                                             fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
                                             ax.plot(xs, ys)
-                                            ax.set_xlabel("t"); ax.set_ylabel("giá trị xấp xỉ (Simpson 1/3)")
+                                            ax.set_xlabel("t"); ax.set_ylabel("Giá trị của đạo hàm")
                                             ax.set_title(f"Đồ thị: CH-f'(t) (Simpson, α={alpha_val:.4g})")
                                             ax.grid(True, alpha=0.2); st.pyplot(fig)
