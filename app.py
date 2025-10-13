@@ -159,7 +159,7 @@ if do_caputo:
 
             cap = caputo_hadamard_derivative(parsed_expr, var, alpha, a0)
             show_expr_result(
-                f"Đạo hàm Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
+                f"Kết quả đạo hàm Caputo-Hadamard theo bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
                 cap
             )
         except Exception as e:
