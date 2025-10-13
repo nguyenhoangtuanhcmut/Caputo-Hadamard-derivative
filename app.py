@@ -66,8 +66,8 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
     return sp.gamma(n - alpha)**-1 * sp.Integral(integrand, (tau, a0, var))
 
 # ====================== Streamlit UI ======================
-st.set_page_config(page_title="Đạo hàm theo t: cổ điển & Caputo-Hadamard", layout="wide")
-st.title("Đạo hàm theo biến t: cổ điển & Caputo-Hadamard")
+st.set_page_config(page_title="Mô phỏng đạo hàm Caputo-Hadamard", layout="wide")
+st.title("Mô phỏng đạo hàm Caputo-Hadamard")
 
 # Sidebar (mốc trái a cho C-H)
 with st.sidebar:
@@ -366,7 +366,7 @@ if plot_btn:
                                         if np.all(~np.isfinite(ys)):
                                             st.info("Không có điểm hữu hiệu để vẽ (có thể do α, a hoặc biểu thức).")
                                         else:
-                                            fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
+                                            fig, ax = plt.subplots(figsize=(8.0, 4.0), dpi=300)
                                             ax.plot(xs, ys)
                                             ax.set_xlabel("t"); ax.set_ylabel("Giá trị của đạo hàm")
                                             ax.set_title(f"Đồ thị: CH-f'(t) (Simpson, α={alpha_val:.4g})")
