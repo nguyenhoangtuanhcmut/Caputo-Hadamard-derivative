@@ -366,8 +366,8 @@ if plot_btn:
                                         if np.all(~np.isfinite(ys)):
                                             st.info("Không có điểm hữu hiệu để vẽ (có thể do α, a hoặc biểu thức).")
                                         else:
-                                            fig, ax = plt.subplots(figsize=(8.0, 4.0), dpi=300)
+                                            fig, ax = plt.subplots(figsize=(7.0, 3.5), dpi=600)
                                             ax.plot(xs, ys)
                                             ax.set_xlabel("t"); ax.set_ylabel("Giá trị của đạo hàm")
-                                            ax.set_title(f"Đồ thị: CH-f'(t) (Simpson, α={alpha_val:.4g})")
+                                            ax.set_title(f"Đồ thị: CH-f'(t) (Simpson 1/3, α={alpha_val:.4g})")
                                             ax.grid(True, alpha=0.2); st.pyplot(fig)
