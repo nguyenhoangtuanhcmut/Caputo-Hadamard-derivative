@@ -72,7 +72,7 @@ with st.sidebar:
 # ====== Nhập biểu thức & lựa chọn biến ======
 col_input, col_opts = st.columns([3, 2], vertical_alignment="bottom")
 with col_input:
-    expr_text = st.text_input("Nhập f(x,y,z,t):", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
+    expr_text = st.text_input("Nhập biểu thức cần tính:", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
 with col_opts:
     alpha_text = st.text_input("Bậc α (Caputo-Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
     var_diff_default = "x"
