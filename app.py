@@ -1,6 +1,5 @@
 # app.py
 # -*- coding: utf-8 -*-
-import io
 from typing import List, Dict, Optional
 
 import streamlit as st
@@ -28,16 +27,14 @@ LOCAL = {
 }
 
 def parse_user_expr(s: str):
-    """Parse KHÔNG evaluate để giữ đúng cấu trúc nhập vào (hiển thị LaTeX đầy đủ)."""
+    """Parse KHÔNG evaluate để giữ đúng cấu trúc nhập (hiển thị LaTeX đầy đủ)."""
     s = s.strip().replace('÷', '/').replace('×', '*').replace('−', '-')
     s = s.replace('^', '**').replace('√(', 'sqrt(')
     return parse_expr(s, local_dict=LOCAL, transformations=TRANSFORMS, evaluate=False)
 
 # ====== Định nghĩa Caputo–Hadamard ======
 def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
-    """
-    Toán tử δ = t d/dt lặp k lần: (δ^k f)(t) với var đóng vai trò 't'.
-    """
+    """Toán tử δ = t d/dt lặp k lần: (δ^k f)(t) với var đóng vai trò 't'."""
     g = sp.simplify(expr)
     for _ in range(k):
         g = sp.simplify(var * sp.diff(g, var))
@@ -59,14 +56,12 @@ def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0
     if a0.is_number and (a0 <= 0):
         raise ValueError("Mốc trái a phải > 0 để ln(x/t) có nghĩa.")
 
-    # Trường hợp nguyên
     if alpha.is_integer is True:
         n = int(alpha)
         if n == 0:
             return sp.simplify(expr)
         return delta_operator(expr, var, n)
 
-    # Trường hợp không nguyên
     n = int(sp.ceiling(alpha))
     t = sp.Symbol(f"{var.name}_t", real=True, positive=True)
     delta_n_f = delta_operator(sp.simplify(expr), var, n).subs({var: t})
@@ -78,16 +73,16 @@ def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0
 if "last_result_expr" not in st.session_state:
     st.session_state.last_result_expr: Optional[sp.Expr] = None
 
-st.set_page_config(page_title="Mô phỏng đạo hàm Caputo–Hadamard", layout="wide")
-st.title("Mô phỏng đạo hàm Caputo–Hadamard")
+st.set_page_config(page_title="Mô phỏng đạo hàm cổ điển & Caputo–Hadamard", layout="wide")
+st.title("Mô phỏng đạo hàm cổ điển & Caputo–Hadamard")
 
 # ====== Sidebar ======
 with st.sidebar:
     st.markdown("### Hướng dẫn nhanh")
     st.markdown(
         "- Nhập hàm \(f(x,y,z,t)\)\n"
-        "- Chọn biến đạo hàm, bậc α và **mốc trái a>0** cho Caputo–Hadamard\n"
-        "- Bấm **Tính ĐH C–H** để hiển thị kết quả (dạng tích phân khi α không nguyên)\n"
+        "- Chọn biến đạo hàm, bậc α; với C–H nhập thêm **mốc trái a>0**\n"
+        "- Bấm **Tính ĐH cổ điển** hoặc **Tính ĐH C–H**\n"
         "- Vẽ đồ thị: chọn biến vẽ, đoạn \([a,b]\), nhập **giá trị các biến khác** rồi bấm **Vẽ đồ thị**"
     )
     st.markdown("---")
@@ -100,10 +95,10 @@ col_input, col_opts = st.columns([3, 2], vertical_alignment="bottom")
 with col_input:
     expr_text = st.text_input("Nhập biểu thức cần tính:", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
 with col_opts:
-    alpha_text = st.text_input("Bậc α (Caputo–Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
+    alpha_text = st.text_input("Bậc α (cho Caputo–Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
     var_diff_default = "x"
 
-# Quét biến
+# Quét biến từ biểu thức (nếu có)
 vars_list: List[str] = ['x', 'y', 'z', 't']
 parsed_expr = None
 parse_error = None
@@ -122,7 +117,9 @@ with left:
     var_diff = st.selectbox("Biến đạo hàm:", options=vars_list, index=max(0, vars_list.index(var_diff_default)))
 with right:
     st.markdown("&nbsp;")
-    b2, = st.columns(1)
+    b1, b2 = st.columns(2)
+    with b1:
+        do_diff = st.button("Tính ĐH cổ điển", use_container_width=True)
     with b2:
         do_caputo = st.button("Tính ĐH C–H", use_container_width=True)
 
@@ -147,19 +144,30 @@ def show_expr_result(title: str, expr: sp.Expr):
             st.code(str(expr))
     st.session_state.last_result_expr = expr
 
+# Đạo hàm cổ điển
+if do_diff:
+    if not parsed_expr:
+        st.warning("Vui lòng nhập biểu thức trước.")
+    else:
+        try:
+            var = sp.Symbol(var_diff, real=True)
+            d = sp.diff(sp.simplify(parsed_expr), var)
+            show_expr_result("Kết quả đạo hàm cổ điển (d/d{"+var_diff+"})", d)
+        except Exception as e:
+            st.error(f"Không tính được đạo hàm cổ điển: {e}")
+
+# Đạo hàm Caputo–Hadamard
 if do_caputo:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
-            # var dương để log(x/t) có nghĩa khi x>0
-            var = sp.Symbol(var_diff, real=True, positive=True)
+            var = sp.Symbol(var_diff, real=True, positive=True)  # x>0 để ln(x/t) có nghĩa khi x>a>0
             alpha = sp.nsimplify(alpha_text) if alpha_text.strip() else sp.Rational(1, 2)
             a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
-
             cap = caputo_hadamard_derivative(parsed_expr, var, alpha, a0)
             show_expr_result(
-                f"Kết quả đạo hàm Caputo-Hadamard theo bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
+                f"Đạo hàm Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
                 cap
             )
         except Exception as e:
@@ -177,7 +185,7 @@ with plot_col2:
     a_text = st.text_input("a (trái):", "-5")
     b_text = st.text_input("b (phải):", "5")
 
-# Chọn biểu thức để vẽ: ưu tiên kết quả gần nhất nếu KHÔNG phải Integral (CH không nguyên là Integral)
+# Chọn biểu thức để vẽ: ưu tiên kết quả gần nhất nếu KHÔNG phải Integral
 expr_to_plot: Optional[sp.Expr] = None
 if st.session_state.last_result_expr is not None and not isinstance(st.session_state.last_result_expr, sp.Integral):
     expr_to_plot = sp.simplify(st.session_state.last_result_expr)
