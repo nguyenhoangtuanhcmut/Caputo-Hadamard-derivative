@@ -379,4 +379,4 @@ if plot_btn:
                                             ax.plot(xs, ys)
                                             ax.set_xlabel("t"); ax.set_ylabel("giá trị xấp xỉ (Simpson 1/3)")
                                             ax.set_title(f"Đồ thị: CH-f'(t) (Simpson 1/3, α={alpha_val:.4g}, a={a0_val:g})")
-                                            ax.grid(True, alpha=0.2); st.pyplot(fig)
+                                            ax.grid(True, alpha=0.2); st.pyplot(fig) 
