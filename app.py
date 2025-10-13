@@ -62,8 +62,8 @@ with st.sidebar:
     st.markdown("### Hướng dẫn nhanh")
     st.markdown(
         "- Nhập hàm \(f(x,y,z,t)\)\n"
-        "- Chọn biến đạo hàm, bậc α cho Caputo\n"
-        "- Bấm **ĐH cổ điển** hoặc **ĐH Caputo** để tính\n"
+        "- Chọn biến đạo hàm, bậc α cho Caputo-Hadamard\n"
+        "- Bấm **ĐH cổ điển** hoặc **ĐH Caputo-Hadamard** để tính\n"
         "- Vẽ đồ thị: chọn biến vẽ, đoạn \([a,b]\), nhập **giá trị các biến khác** rồi bấm **Vẽ đồ thị**"
     )
     st.markdown("---")
@@ -74,7 +74,7 @@ col_input, col_opts = st.columns([3, 2], vertical_alignment="bottom")
 with col_input:
     expr_text = st.text_input("Nhập f(x,y,z,t):", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
 with col_opts:
-    alpha_text = st.text_input("Bậc α (Caputo):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
+    alpha_text = st.text_input("Bậc α (Caputo-Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
     var_diff_default = "x"
 
 # Quét biến
@@ -100,7 +100,7 @@ with right:
     with b1:
         do_diff = st.button("ĐH cổ điển", use_container_width=True)
     with b2:
-        do_caputo = st.button("ĐH Caputo", use_container_width=True)
+        do_caputo = st.button("ĐH Caputo-Hadamard", use_container_width=True)
 
 # Hiển thị công thức gốc
 st.markdown("#### Công thức đang nhập")
