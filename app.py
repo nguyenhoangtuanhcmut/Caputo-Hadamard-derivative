@@ -67,7 +67,7 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
 
 # ====================== Streamlit UI ======================
 st.set_page_config(page_title="Mô phỏng đạo hàm Caputo–Hadamard", layout="wide")
-st.title("Mô phỏng đạo hàm Caputo–Hadamard theo biến t")
+st.title("Mô phỏng đạo hàm Caputo–Hadamard")
 
 # Nhập biểu thức
 expr_text = st.text_input(
