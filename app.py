@@ -55,7 +55,7 @@ def caputo_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr) -> sp.Expr:
 if "last_result_expr" not in st.session_state:
     st.session_state.last_result_expr: Optional[sp.Expr] = None
 
-st.set_page_config(page_title="Mô phỏng Đạo hàm Caputo-Hadamard", layout="wide")
+st.set_page_config(page_title="Mô phỏng Đạo hàm Caputo-Hadamard ", layout="wide")
 st.title("Mini Calc – Đạo hàm cổ điển & Caputo (Streamlit)")
 
 with st.sidebar:
