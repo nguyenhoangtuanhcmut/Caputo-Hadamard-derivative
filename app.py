@@ -201,21 +201,20 @@ elif plot_target == "f'":
     source_note = "Đang vẽ: f'(t) – đạo hàm cổ điển"
 else:  # "CH-f'"
     expr_base = parsed_expr  # các biến phụ lấy từ f
-    ch_expr = st.session_state.get("last_ch")
-    if ch_expr is None and parsed_expr is not None:
-        # Tính nhanh nếu chưa bấm nút
+    # Luôn (re)build biểu thức CH-f' từ α,a0 hiện tại để chắc chắn Integral/non-Integral đúng:
+    ch_expr = None
+    if parsed_expr is not None and alpha_text.strip() != "":
+        try:
+            t = get_t_symbol(parsed_expr)
+            alpha_tmp = sp.nsimplify(alpha_text)
+            a0_tmp = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
+            ch_expr = caputo_hadamard_symbolic(parsed_expr, t, alpha_tmp, a0_tmp)
+        except Exception as e:
+            st.error(f"Không tạo được CH-f' để vẽ: {e}")
+            ch_expr = None
+    else:
         if alpha_text.strip() == "":
             st.warning("Vui lòng nhập bậc α ở ô trên để vẽ CH-f'.")
-        else:
-            try:
-                t = get_t_symbol(parsed_expr)
-                alpha_tmp = sp.nsimplify(alpha_text)
-                a0_tmp = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
-                ch_expr = caputo_hadamard_symbolic(parsed_expr, t, alpha_tmp, a0_tmp)
-                st.session_state.last_ch = ch_expr
-            except Exception as e:
-                st.error(f"Không tạo được CH-f' để vẽ: {e}")
-                ch_expr = None
     expr_to_plot = ch_expr
     source_note = "Đang vẽ: CH-f'(t)"
 
@@ -296,18 +295,18 @@ if plot_btn:
         else:
             t = get_t_symbol(expr_base)
 
-            # --------- Trường hợp f hoặc f' (hoặc CH-f' nhưng α nguyên) -> lambdify ---------
+            # --------- 1) Trường hợp f hoặc f' hoặc CH-f' với α nguyên -> lambdify ---------
             if not isinstance(expr_to_plot, sp.Integral):
                 expr_plot = sp.simplify(expr_to_plot.subs(other_vals)) if other_vals else sp.simplify(expr_to_plot)
                 try:
-                    f = sp.lambdify(t, expr_plot, modules=['numpy'])
+                    fnum = sp.lambdify(t, expr_plot, modules=['numpy'])
                 except Exception as e:
                     st.error(f"Không thể chuyển biểu thức sang hàm số: {e}")
-                    f = None
+                    fnum = None
 
-                if f is not None:
+                if fnum is not None:
                     xs = np.linspace(a, b, 600)
-                    ys = _eval_curve_numpy(f, xs)
+                    ys = _eval_curve_numpy(fnum, xs)
                     if ys.shape != xs.shape:
                         ys = np.resize(ys, xs.shape)
                     if np.all(~np.isfinite(ys)):
@@ -323,9 +322,9 @@ if plot_btn:
                         ax.grid(True, alpha=0.2)
                         st.pyplot(fig)
 
-            # --------- Trường hợp CH-f' với α không nguyên -> tích phân số mpmath ---------
+            # --------- 2) Trường hợp CH-f' với α không nguyên -> TÍCH PHÂN SỐ (mpmath.quad) ---------
             else:
-                # Cần alpha và a0 hợp lệ
+                # Lấy alpha và a0 dạng số
                 if alpha_text.strip() == "":
                     st.error("Vui lòng nhập bậc α để vẽ CH-f'.")
                 else:
@@ -341,25 +340,26 @@ if plot_btn:
                             st.error("Mốc trái a phải > 0.")
                         else:
                             n = int(np.ceil(alpha_val))  # bậc trên của delta
-                            # Chuẩn bị delta^n f(tau), đã thay biến phụ
-                            tau = sp.Symbol(f"{t.name}_tau", real=True, positive=True)
+                            # Biểu thức cơ sở có thay biến phụ
                             base_expr = parsed_expr.subs(other_vals) if (parsed_expr is not None and other_vals) else parsed_expr
                             if base_expr is None:
                                 st.error("Thiếu biểu thức cơ sở để vẽ.")
                             else:
+                                tau = sp.Symbol(f"{t.name}_tau", real=True, positive=True)
                                 delta_n = delta_operator(sp.simplify(base_expr), t, n).subs({t: tau})
-                                # lambdify bằng mpmath (để dùng trong quad)
+
+                                # lambdify bằng mpmath cho δ^n f(τ)
                                 try:
                                     f_tau = sp.lambdify(tau, delta_n, modules=['mpmath'])
                                 except Exception as e:
-                                    st.error(f"Không thể chuyển δ^n f(tau) sang hàm số: {e}")
+                                    st.error(f"Không thể chuyển δ^n f(τ) sang hàm số: {e}")
                                     f_tau = None
 
                                 if f_tau is not None:
                                     gamma_factor = 1.0 / mp.gamma(n - alpha_val)
 
                                     def ch_numeric(tt):
-                                        # Giá trị định nghĩa: chỉ có nghĩa khi tt > a0
+                                        """Giá trị số của CH-f'(t) tại t=tt bằng mpmath.quad."""
                                         if tt <= a0_val:
                                             return mp.nan
                                         def integrand(ta):
@@ -370,7 +370,7 @@ if plot_btn:
                                         except Exception:
                                             return mp.nan
 
-                                    # Bảo đảm miền vẽ nằm trên (a0, b]
+                                    # Miền vẽ hợp lệ phải nằm trong (a0, b]
                                     left = max(a, a0_val + 1e-9)
                                     if left >= b:
                                         st.error("Khoảng vẽ phải thỏa a < b và b > a0.")
