@@ -10,7 +10,6 @@ from sympy.parsing.sympy_parser import (
     implicit_multiplication_application, convert_xor, implicit_application
 )
 import matplotlib.pyplot as plt
-import mpmath as mp
 
 # ====================== Parser cấu hình ======================
 TRANSFORMS = (
@@ -23,47 +22,36 @@ LOCAL = {
     'ln': sp.log, 'log': sp.log,
     'log10': lambda a: sp.log(a, 10),
     'log2':  lambda a: sp.log(a, 2),
-    'exp': sp.exp,  # tiện nhập exp(t)
+    'exp': sp.exp,
     'sin': sp.sin, 'cos': sp.cos, 'tan': sp.tan,
     'asin': sp.asin, 'acos': sp.acos, 'atan': sp.atan,
 }
 
 def parse_user_expr(s: str):
-    """Parse KHÔNG evaluate để giữ cấu trúc nhập (phục vụ LaTeX)."""
     s = s.strip().replace('÷', '/').replace('×', '*').replace('−', '-')
     s = s.replace('^', '**').replace('√(', 'sqrt(')
     return parse_expr(s, local_dict=LOCAL, transformations=TRANSFORMS, evaluate=False)
 
 def get_t_symbol(expr: sp.Expr) -> sp.Symbol:
-    """Lấy đúng bản thể Symbol 't' trong biểu thức (nếu có), nếu không thì tạo Symbol('t')."""
     for s in expr.free_symbols:
         if s.name == 't':
             return s
     return sp.Symbol('t')
 
-# ========== Định nghĩa Caputo–Hadamard (trái) theo biến t ==========
+# ========== Caputo–Hadamard (trái) theo biến t ==========
 def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
-    """Toán tử δ = t d/dt lặp k lần: (δ^k f)(t)."""
     g = sp.simplify(expr)
     for _ in range(k):
         g = sp.simplify(var * sp.diff(g, var))
     return g
 
 def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: sp.Expr) -> sp.Expr:
-    r"""
-    {}^{CH}D^{α}_{a^+} f(t) =
-      - Nếu α = n ∈ ℕ: (δ^n f)(t), δ = t d/dt.
-      - Nếu n-1 < α < n: (1/Γ(n-α)) ∫_a^t (ln(t/τ))^{n-α-1} (δ^n f)(τ) dτ / τ.
-    Trả về biểu thức SymPy (Integral nếu α không nguyên).
-    """
     alpha = sp.nsimplify(alpha)
     a0 = sp.nsimplify(a0)
-
     if (alpha.is_real is False) or (alpha.is_number and alpha < 0):
         raise ValueError("α phải là số thực và không âm.")
     if a0.is_number and (a0 <= 0):
         raise ValueError("Mốc trái a phải > 0 để ln(t/τ) có nghĩa.")
-
     if alpha.is_integer is True:
         n = int(alpha)
         if n == 0:
@@ -81,14 +69,12 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
 st.set_page_config(page_title="Đạo hàm theo t: cổ điển & Caputo–Hadamard", layout="wide")
 st.title("Đạo hàm theo biến t: cổ điển & Caputo–Hadamard")
 
-# Sidebar: mốc trái a cho C–H
 with st.sidebar:
     st.markdown("### Thiết lập C–H")
     a0_text = st.text_input("Mốc trái a (>0):", value="1", help="Ví dụ: 1, 2, E, ...")
     st.markdown("---")
     st.caption("Mọi đạo hàm đều theo **biến t**. Khi vẽ cần nhập giá trị các biến khác (khác t).")
 
-# Nhập biểu thức
 expr_text = st.text_input("Nhập biểu thức f(t, ...):", value="", placeholder="Ví dụ: exp(t) + t^2/(1+x^2)")
 
 parsed_expr: Optional[sp.Expr] = None
@@ -201,7 +187,6 @@ elif plot_target == "f'":
     source_note = "Đang vẽ: f'(t) – đạo hàm cổ điển"
 else:  # "CH-f'"
     expr_base = parsed_expr  # các biến phụ lấy từ f
-    # Luôn (re)build biểu thức CH-f' từ α,a0 hiện tại để chắc chắn Integral/non-Integral đúng:
     ch_expr = None
     if parsed_expr is not None and alpha_text.strip() != "":
         try:
@@ -249,7 +234,7 @@ if expr_base is not None:
         st.caption("_(không có biến khác ngoài t)_")
         need_other_ok = True
 
-# --------- Helpers vẽ an toàn ---------
+# --------- Helpers vẽ & Simpson 1/3 ---------
 def _safe_float(v):
     try:
         return float(v)
@@ -257,7 +242,6 @@ def _safe_float(v):
         return np.nan
 
 def _eval_curve_numpy(f, xs: np.ndarray) -> np.ndarray:
-    """Chuẩn hoá đầu ra của f(xs) -> mảng 1D cùng shape với xs, lọc complex/NaN."""
     try:
         y = f(xs)
     except Exception:
@@ -273,6 +257,20 @@ def _eval_curve_numpy(f, xs: np.ndarray) -> np.ndarray:
         y = np.where(imag < 1e-12, np.real(y), np.nan)
     y[~np.isfinite(y)] = np.nan
     return y
+
+def simpson_integrate(y: np.ndarray, x: np.ndarray) -> float:
+    """Simpson 1/3 trên lưới đều (hoặc gần đều). N = len(x)-1 phải chẵn; nếu lẻ, bỏ điểm cuối."""
+    n = len(x) - 1
+    if n < 2:
+        return float('nan')
+    if n % 2 == 1:
+        # bỏ 1 bước cuối để có số khoảng chẵn
+        x = x[:-1]
+        y = y[:-1]
+        n -= 1
+    h = (x[-1] - x[0]) / n
+    S = y[0] + y[-1] + 4.0 * y[1:-1:2].sum() + 2.0 * y[2:-2:2].sum()
+    return float(h * S / 3.0)
 
 plot_btn = st.button("Vẽ đồ thị", type="primary")
 
@@ -295,7 +293,7 @@ if plot_btn:
         else:
             t = get_t_symbol(expr_base)
 
-            # --------- 1) Trường hợp f hoặc f' hoặc CH-f' với α nguyên -> lambdify ---------
+            # ===== 1) f, f' hoặc CH-f' với α nguyên -> lambdify bình thường =====
             if not isinstance(expr_to_plot, sp.Integral):
                 expr_plot = sp.simplify(expr_to_plot.subs(other_vals)) if other_vals else sp.simplify(expr_to_plot)
                 try:
@@ -322,9 +320,8 @@ if plot_btn:
                         ax.grid(True, alpha=0.2)
                         st.pyplot(fig)
 
-            # --------- 2) Trường hợp CH-f' với α không nguyên -> TÍCH PHÂN SỐ (mpmath.quad) ---------
+            # ===== 2) CH-f' với α không nguyên -> Simpson 1/3 trên tích phân =====
             else:
-                # Lấy alpha và a0 dạng số
                 if alpha_text.strip() == "":
                     st.error("Vui lòng nhập bậc α để vẽ CH-f'.")
                 else:
@@ -339,51 +336,52 @@ if plot_btn:
                         if a0_val <= 0:
                             st.error("Mốc trái a phải > 0.")
                         else:
-                            n = int(np.ceil(alpha_val))  # bậc trên của delta
-                            # Biểu thức cơ sở có thay biến phụ
+                            # Chuẩn bị δ^n f(τ) (đã thay biến phụ), dạng numpy-callable
+                            n = int(np.ceil(alpha_val))
                             base_expr = parsed_expr.subs(other_vals) if (parsed_expr is not None and other_vals) else parsed_expr
                             if base_expr is None:
                                 st.error("Thiếu biểu thức cơ sở để vẽ.")
                             else:
                                 tau = sp.Symbol(f"{t.name}_tau", real=True, positive=True)
                                 delta_n = delta_operator(sp.simplify(base_expr), t, n).subs({t: tau})
-
-                                # lambdify bằng mpmath cho δ^n f(τ)
                                 try:
-                                    f_tau = sp.lambdify(tau, delta_n, modules=['mpmath'])
+                                    f_tau_np = sp.lambdify(tau, delta_n, modules=['numpy'])
                                 except Exception as e:
-                                    st.error(f"Không thể chuyển δ^n f(τ) sang hàm số: {e}")
-                                    f_tau = None
+                                    st.error(f"Không thể chuyển δ^n f(τ) sang hàm số (numpy): {e}")
+                                    f_tau_np = None
 
-                                if f_tau is not None:
-                                    gamma_factor = 1.0 / mp.gamma(n - alpha_val)
+                                if f_tau_np is not None:
+                                    gamma_factor = 1.0 / float(sp.gamma(n - sp.Float(alpha_val)))
 
-                                    def ch_numeric(tt):
-                                        """Giá trị số của CH-f'(t) tại t=tt bằng mpmath.quad."""
-                                        if tt <= a0_val:
-                                            return mp.nan
-                                        def integrand(ta):
-                                            return (mp.log(tt / ta) ** (n - alpha_val - 1.0)) * f_tau(ta) / ta
-                                        try:
-                                            val = mp.quad(integrand, [a0_val, tt])
-                                            return gamma_factor * val
-                                        except Exception:
-                                            return mp.nan
-
-                                    # Miền vẽ hợp lệ phải nằm trong (a0, b]
+                                    # Miền vẽ phải nằm trong (a0, b]
                                     left = max(a, a0_val + 1e-9)
                                     if left >= b:
                                         st.error("Khoảng vẽ phải thỏa a < b và b > a0.")
                                     else:
-                                        xs = np.linspace(left, b, 350)
-                                        ys_list = []
-                                        for xv in xs:
+                                        xs = np.linspace(left, b, 260)  # số điểm t để vẽ
+                                        ys = np.full_like(xs, np.nan, dtype=float)
+
+                                        for i, tt in enumerate(xs):
+                                            # Lưới Simpson trên [a0, tt]; tránh điểm cuối vì log(tt/tt)=0 -> OK,
+                                            # nhưng để ổn định số, lùi nhẹ một epsilon.
+                                            if tt <= a0_val:
+                                                ys[i] = np.nan
+                                                continue
+                                            eps = max(1e-12, 1e-9 * (tt - a0_val))
+                                            N = 400  # số phân đoạn Simpson (chẵn), có thể chỉnh
+                                            if N % 2 == 1:
+                                                N += 1
+                                            taus = np.linspace(a0_val, tt - eps, N + 1)
                                             try:
-                                                yv = float(ch_numeric(float(xv)))
-                                                ys_list.append(yv if np.isfinite(yv) else np.nan)
+                                                delta_vals = f_tau_np(taus)
                                             except Exception:
-                                                ys_list.append(np.nan)
-                                        ys = np.array(ys_list, dtype=float)
+                                                ys[i] = np.nan
+                                                continue
+                                            integ_vals = (np.log(tt / taus) ** (n - alpha_val - 1.0)) * (delta_vals / taus)
+                                            # lọc NaN/inf trước khi Simpson
+                                            integ_vals = np.where(np.isfinite(integ_vals), integ_vals, 0.0)
+                                            val = simpson_integrate(integ_vals, taus)
+                                            ys[i] = gamma_factor * val
 
                                         if np.all(~np.isfinite(ys)):
                                             st.info("Không có điểm hữu hiệu để vẽ trên khoảng đã chọn (có thể do α, a hoặc biểu thức).")
@@ -391,7 +389,7 @@ if plot_btn:
                                             fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
                                             ax.plot(xs, ys)
                                             ax.set_xlabel("t")
-                                            ax.set_ylabel("giá trị xấp xỉ")
-                                            ax.set_title(f"Đồ thị: CH-f'(t) (xấp xỉ số, α={alpha_val})")
+                                            ax.set_ylabel("giá trị xấp xỉ (Simpson 1/3)")
+                                            ax.set_title(f"Đồ thị: CH-f'(t) (xấp xỉ Simpson, α={alpha_val})")
                                             ax.grid(True, alpha=0.2)
                                             st.pyplot(fig)
