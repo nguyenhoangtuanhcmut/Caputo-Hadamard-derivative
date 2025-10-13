@@ -38,7 +38,7 @@ def get_t_symbol(expr: sp.Expr) -> sp.Symbol:
             return s
     return sp.Symbol('t')
 
-# ========== Caputo-Hadamard (trái) theo biến t ==========
+# ========== Caputo–Hadamard (trái) theo biến t ==========
 def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
     """δ = t d/dt; trả về (δ^k f)(t)."""
     g = sp.simplify(expr)
@@ -52,7 +52,7 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
     if (alpha.is_real is False) or (alpha.is_number and alpha < 0):
         raise ValueError("α phải là số thực và không âm.")
     if a0.is_number and (a0 <= 0):
-        raise ValueError("Mốc trái a phải > 0 để ln(t/τ) có nghĩa.")
+        raise ValueError("Cận dưới a phải > 0 để ln(t/τ) có nghĩa.")
     if alpha.is_integer is True:
         n = int(alpha)
         if n == 0:
@@ -66,18 +66,16 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
     return sp.gamma(n - alpha)**-1 * sp.Integral(integrand, (tau, a0, var))
 
 # ====================== Streamlit UI ======================
-st.set_page_config(page_title="Mô phỏng đạo hàm Caputo-Hadamard", layout="wide")
-st.title("Mô phỏng đạo hàm Caputo-Hadamard")
-
-# Sidebar (mốc trái a cho C-H)
-with st.sidebar:
-    st.markdown("### Thiết lập C-H")
-    a0_text = st.text_input("Mốc trái a (>0):", value="1", help="Ví dụ: 1, 2, E, ...")
-    st.markdown("---")
-    st.caption("Mọi đạo hàm đều theo **biến t**. Khi vẽ cần nhập giá trị các biến khác (khác t).")
+st.set_page_config(page_title="Mô phỏng đạo hàm Caputo–Hadamard", layout="wide")
+st.title("Mô phỏng đạo hàm Caputo–Hadamard theo biến t")
 
 # Nhập biểu thức
-expr_text = st.text_input("Nhập biểu thức cần tính đạo hàm (theo biến t):", value="", placeholder="Ví dụ: exp(t) + t^2")
+expr_text = st.text_input(
+    "Nhập biểu thức cần tính đạo hàm (theo biến t):",
+    value="",
+    placeholder="Ví dụ: exp(t) + t^2"
+)
+
 parsed_expr: Optional[sp.Expr] = None
 parse_error = None
 if expr_text.strip():
@@ -86,7 +84,7 @@ if expr_text.strip():
     except Exception as e:
         parse_error = str(e)
 
-st.markdown("#### Công thức đã nhập:")
+st.markdown("#### Công thức đã nhập")
 if parse_error:
     st.error(f"Biểu thức không hợp lệ: {parse_error}")
 elif parsed_expr is not None:
@@ -94,14 +92,16 @@ elif parsed_expr is not None:
 else:
     st.info("Đang đợi nhập biểu thức ...")
 
-# ===== Nút tính đạo hàm (theo t) + ô nhập α ngay trước khi tính C-H =====
-col_btn = st.columns([2, 2, 2])
-with col_btn[0]:
-    do_diff = st.button("Tính đạo hàm cổ điển (theo t)", use_container_width=True)
-with col_btn[1]:
-    alpha_text = st.text_input("Bậc α cho C-H:", value="", key="alpha_input", placeholder="vd: 0.5 hoặc 2")
-with col_btn[2]:
-    do_ch = st.button("Tính đạo hàm Caputo-Hadamard", use_container_width=True)
+# ===== Hàng điều khiển tính đạo hàm: f' | α | a | CH-f' =====
+ctrl = st.columns([2, 2, 2, 2], vertical_alignment="bottom")
+with ctrl[0]:
+    do_diff = st.button("Tính f' (đạo hàm cổ điển theo t)", use_container_width=True)
+with ctrl[1]:
+    alpha_text = st.text_input("Bậc α (C–H):", value="", key="alpha_input", placeholder="vd: 0.5 hoặc 2")
+with ctrl[2]:
+    a0_text = st.text_input("Cận dưới a (>0):", value="1", key="a0_input", placeholder="vd: 1")
+with ctrl[3]:
+    do_ch = st.button("Tính CH-f' (Caputo–Hadamard)", use_container_width=True)
 
 result_placeholder = st.empty()
 if "last_classic" not in st.session_state:
@@ -128,26 +128,30 @@ if do_diff:
             if t not in parsed_expr.free_symbols:
                 st.warning("Biểu thức không phụ thuộc t; đạo hàm theo t bằng 0.")
             d = sp.diff(sp.simplify(parsed_expr), t)
-            show_expr_result("f' - đạo hàm cổ điển theo t", d, "last_classic")
+            show_expr_result("f'(t) – đạo hàm cổ điển theo t", d, "last_classic")
         except Exception as e:
             st.error(f"Không tính được đạo hàm cổ điển: {e}")
 
-# --- Tính Caputo-Hadamard (để HIỂN THỊ) ---
+# --- Tính Caputo–Hadamard (HIỂN THỊ) ---
 if do_ch:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     elif alpha_text.strip() == "":
-        st.warning("Vui lòng nhập bậc đạo hàm α trước khi tính C-H.")
+        st.warning("Vui lòng nhập bậc α trước khi tính C–H.")
+    elif a0_text.strip() == "":
+        st.warning("Vui lòng nhập cận dưới a trước khi tính C–H.")
     else:
         try:
             t = get_t_symbol(parsed_expr)
             alpha = sp.nsimplify(alpha_text)
-            a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
+            a0 = sp.nsimplify(a0_text)
             ch_expr = caputo_hadamard_symbolic(parsed_expr, t, alpha, a0)
-            show_expr_result(f"CH-f'(t) - ĐH Caputo-Hadamard bậc α = {sp.latex(alpha)}, cận dưới a = {sp.latex(a0)}",
-                             ch_expr, "last_ch")
+            show_expr_result(
+                f"CH-f'(t) – Caputo–Hadamard bậc α = {sp.latex(alpha)}, cận dưới a = {sp.latex(a0)}",
+                ch_expr, "last_ch"
+            )
         except Exception as e:
-            st.error(f"Không tính được Caputo-Hadamard: {e}")
+            st.error(f"Không tính được Caputo–Hadamard: {e}")
 
 st.markdown("---")
 
@@ -265,7 +269,8 @@ if plot_btn:
                         st.info("Không có điểm hữu hiệu để vẽ trên [a,b].")
                     else:
                         fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
-                        ax.plot(xs, ys); ax.set_xlabel("t"); ax.set_ylabel("giá trị"); ax.set_title("Đồ thị: f(t)")
+                        ax.plot(xs, ys)
+                        ax.set_xlabel("t"); ax.set_ylabel("giá trị"); ax.set_title("Đồ thị: f(t)")
                         ax.grid(True, alpha=0.2); st.pyplot(fig)
 
             # ======= VẼ f' (cổ điển) =======
@@ -284,23 +289,26 @@ if plot_btn:
                         st.info("Không có điểm hữu hiệu để vẽ trên [a,b].")
                     else:
                         fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
-                        ax.plot(xs, ys); ax.set_xlabel("t"); ax.set_ylabel("giá trị"); ax.set_title("Đồ thị: f'(t)")
+                        ax.plot(xs, ys)
+                        ax.set_xlabel("t"); ax.set_ylabel("giá trị"); ax.set_title("Đồ thị: f'(t)")
                         ax.grid(True, alpha=0.2); st.pyplot(fig)
 
             # ======= VẼ CH-f' =======
             else:
                 if alpha_text.strip() == "":
                     st.error("Vui lòng nhập bậc α để vẽ CH-f'.")
+                elif a0_text.strip() == "":
+                    st.error("Vui lòng nhập cận dưới a để vẽ CH-f'.")
                 else:
                     try:
                         alpha_val = float(sp.N(sp.nsimplify(alpha_text)))
-                        a0_val = float(sp.N(sp.nsimplify(a0_text))) if a0_text.strip() else 1.0
+                        a0_val = float(sp.N(sp.nsimplify(a0_text)))
                     except Exception:
                         st.error("α hoặc a không hợp lệ."); alpha_val = None
 
                     if alpha_val is not None:
                         if a0_val <= 0:
-                            st.error("Mốc trái a phải > 0.")
+                            st.error("Cận dưới a phải > 0.")
                         else:
                             # α nguyên -> δ^n f: lambdify bình thường
                             if float(alpha_val).is_integer():
@@ -319,7 +327,8 @@ if plot_btn:
                                         st.info("Không có điểm hữu hiệu để vẽ trên [a,b].")
                                     else:
                                         fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
-                                        ax.plot(xs, ys); ax.set_xlabel("t"); ax.set_ylabel("giá trị")
+                                        ax.plot(xs, ys)
+                                        ax.set_xlabel("t"); ax.set_ylabel("giá trị")
                                         ax.set_title(f"Đồ thị: CH-f'(t) (α = {n}, δ^{n}f)")
                                         ax.grid(True, alpha=0.2); st.pyplot(fig)
 
@@ -340,7 +349,7 @@ if plot_btn:
                                     gamma_factor = 1.0 / float(sp.gamma(n - sp.Float(alpha_val)))
                                     left = max(a, a0_val + 1e-9)
                                     if left >= b:
-                                        st.error("Khoảng vẽ phải thỏa a < b và b > a0.")
+                                        st.error("Khoảng vẽ phải thỏa a < b và b > a.")
                                     else:
                                         xs = np.linspace(left, b, 260)
                                         ys = np.full_like(xs, np.nan, dtype=float)
@@ -366,8 +375,8 @@ if plot_btn:
                                         if np.all(~np.isfinite(ys)):
                                             st.info("Không có điểm hữu hiệu để vẽ (có thể do α, a hoặc biểu thức).")
                                         else:
-                                            fig, ax = plt.subplots(figsize=(7.0, 3.5), dpi=600)
+                                            fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
                                             ax.plot(xs, ys)
-                                            ax.set_xlabel("t"); ax.set_ylabel("Giá trị của đạo hàm")
-                                            ax.set_title(f"Đồ thị: CH-f'(t) (Simpson 1/3, α={alpha_val:.4g})")
+                                            ax.set_xlabel("t"); ax.set_ylabel("giá trị xấp xỉ (Simpson 1/3)")
+                                            ax.set_title(f"Đồ thị: CH-f'(t) (Simpson 1/3, α={alpha_val:.4g}, a={a0_val:g})")
                                             ax.grid(True, alpha=0.2); st.pyplot(fig)
