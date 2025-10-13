@@ -1,3 +1,4 @@
+# app.py
 # -*- coding: utf-8 -*-
 import io
 from typing import List, Dict, Optional
@@ -11,7 +12,7 @@ from sympy.parsing.sympy_parser import (
 )
 import matplotlib.pyplot as plt
 
-# ====== Parser cấu hình (tương đương bản PyQt6) ======
+# ====== Parser cấu hình ======
 TRANSFORMS = (
     standard_transformations
     + (implicit_multiplication_application, implicit_application, convert_xor)
@@ -32,49 +33,74 @@ def parse_user_expr(s: str):
     s = s.replace('^', '**').replace('√(', 'sqrt(')
     return parse_expr(s, local_dict=LOCAL, transformations=TRANSFORMS, evaluate=False)
 
-# ====== Caputo ======
-def caputo_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr) -> sp.Expr:
+# ====== Định nghĩa Caputo–Hadamard ======
+def delta_operator(expr: sp.Expr, var: sp.Symbol, k: int) -> sp.Expr:
     """
-    - alpha nguyên (kể cả 0): đạo hàm thường bậc n.
-    - alpha phân số dương: biểu thức dạng tích phân Caputo (không số hoá).
+    Toán tử δ = t d/dt lặp k lần: (δ^k f)(t) với var đóng vai trò 't'.
     """
+    g = sp.simplify(expr)
+    for _ in range(k):
+        g = sp.simplify(var * sp.diff(g, var))
+    return g
+
+def caputo_hadamard_derivative(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: sp.Expr) -> sp.Expr:
+    r"""
+    Đạo hàm Caputo–Hadamard trái bậc alpha trên (a0, ·):
+    - Nếu alpha = n ∈ ℕ: (δ^n f)(x) với δ = x d/dx.
+    - Nếu alpha = 0: f(x).
+    - Nếu n-1 < alpha < n:
+        1/Γ(n-α) ∫_a0^x (ln(x/t))^{n-α-1} (δ^n f)(t) dt / t.
+    """
+    alpha = sp.nsimplify(alpha)
+    a0 = sp.nsimplify(a0)
+
+    if (alpha.is_real is False) or (alpha.is_number and alpha < 0):
+        raise ValueError("α phải là số thực và không âm.")
+    if a0.is_number and (a0 <= 0):
+        raise ValueError("Mốc trái a phải > 0 để ln(x/t) có nghĩa.")
+
+    # Trường hợp nguyên
     if alpha.is_integer is True:
         n = int(alpha)
         if n == 0:
             return sp.simplify(expr)
-        return sp.diff(sp.simplify(expr), var, n)
+        return delta_operator(expr, var, n)
 
-    a0 = sp.S(0)
-    t = sp.Symbol(f"{var.name}_t", real=True)
+    # Trường hợp không nguyên
     n = int(sp.ceiling(alpha))
-    integrand = sp.diff(sp.simplify(expr), var, n).subs({var: t}) * (var - t)**(n - alpha - 1)
-    cap = sp.gamma(n - alpha)**-1 * sp.Integral(integrand, (t, a0, var))
-    return cap
+    t = sp.Symbol(f"{var.name}_t", real=True, positive=True)
+    delta_n_f = delta_operator(sp.simplify(expr), var, n).subs({var: t})
+    kernel_pow = n - alpha - 1
+    integrand = delta_n_f * (sp.log(var / t))**(kernel_pow) / t
+    return sp.gamma(n - alpha)**-1 * sp.Integral(sp.simplify(integrand), (t, a0, var))
 
 # ====== State ======
 if "last_result_expr" not in st.session_state:
     st.session_state.last_result_expr: Optional[sp.Expr] = None
 
-st.set_page_config(page_title="Mô phỏng đạo hàm Caputo-Hadamard", layout="wide")
-st.title("Mô phỏng đạo hàm Caputo-Hadamard")
+st.set_page_config(page_title="Mô phỏng đạo hàm Caputo–Hadamard", layout="wide")
+st.title("Mô phỏng đạo hàm Caputo–Hadamard")
 
+# ====== Sidebar ======
 with st.sidebar:
     st.markdown("### Hướng dẫn nhanh")
     st.markdown(
         "- Nhập hàm \(f(x,y,z,t)\)\n"
-        "- Chọn biến đạo hàm, bậc α cho Caputo-Hadamard\n"
-        "- Bấm **ĐH cổ điển** hoặc **ĐH Caputo-Hadamard** để tính\n"
+        "- Chọn biến đạo hàm, bậc α và **mốc trái a>0** cho Caputo–Hadamard\n"
+        "- Bấm **Tính ĐH C–H** để hiển thị kết quả (dạng tích phân khi α không nguyên)\n"
         "- Vẽ đồ thị: chọn biến vẽ, đoạn \([a,b]\), nhập **giá trị các biến khác** rồi bấm **Vẽ đồ thị**"
     )
     st.markdown("---")
-    st.markdown("**Mẹo:** `^` cho lũy thừa; `sqrt(...)`, `ln(...)`, `sin(...)`, ...")
+    st.markdown("**Mẹo nhập:** `^` (lũy thừa); `sqrt(...)`, `ln(...)`, `sin(...)`, ...")
+    st.markdown("---")
+    a0_text = st.text_input("Mốc trái a (>0) cho C–H:", value="1", help="Ví dụ: 1, 2, E, ...")
 
 # ====== Nhập biểu thức & lựa chọn biến ======
 col_input, col_opts = st.columns([3, 2], vertical_alignment="bottom")
 with col_input:
     expr_text = st.text_input("Nhập biểu thức cần tính:", value="", placeholder="Ví dụ: sin(x)*exp(y) + x^2/(1+z^2)")
 with col_opts:
-    alpha_text = st.text_input("Bậc α (Caputo-Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
+    alpha_text = st.text_input("Bậc α (Caputo–Hadamard):", value="0.5", help="Ví dụ: 1/2, 1, 2, 0.7")
     var_diff_default = "x"
 
 # Quét biến
@@ -96,11 +122,9 @@ with left:
     var_diff = st.selectbox("Biến đạo hàm:", options=vars_list, index=max(0, vars_list.index(var_diff_default)))
 with right:
     st.markdown("&nbsp;")
-    b1, b2 = st.columns(2)
-    with b1:
-        do_diff = st.button("Tính ĐH cổ điển", use_container_width=True)
+    b2, = st.columns(1)
     with b2:
-        do_caputo = st.button("Tính ĐH C-H", use_container_width=True)
+        do_caputo = st.button("Tính ĐH C–H", use_container_width=True)
 
 # Hiển thị công thức gốc
 st.markdown("#### Công thức đang nhập")
@@ -123,33 +147,23 @@ def show_expr_result(title: str, expr: sp.Expr):
             st.code(str(expr))
     st.session_state.last_result_expr = expr
 
-if do_diff:
-    if not parsed_expr:
-        st.warning("Vui lòng nhập biểu thức trước.")
-    else:
-        try:
-            var = sp.Symbol(var_diff)
-            d = sp.diff(sp.simplify(parsed_expr), var)
-            show_expr_result("Kết quả đạo hàm cổ điển", d)
-        except Exception as e:
-            st.error(f"Không tính được đạo hàm cổ điển: {e}")
-
 if do_caputo:
     if not parsed_expr:
         st.warning("Vui lòng nhập biểu thức trước.")
     else:
         try:
-            var = sp.Symbol(var_diff)
+            # var dương để log(x/t) có nghĩa khi x>0
+            var = sp.Symbol(var_diff, real=True, positive=True)
             alpha = sp.nsimplify(alpha_text) if alpha_text.strip() else sp.Rational(1, 2)
-            if alpha.is_real is False:
-                st.error("α phải là số thực.")
-            elif alpha.is_number and alpha < 0:
-                st.error("α phải không âm (α ≥ 0).")
-            else:
-                cap = caputo_derivative(parsed_expr, var, alpha)
-                show_expr_result(f"Đạo hàm bậc α = {sp.latex(alpha)}", cap)
+            a0 = sp.nsimplify(a0_text) if a0_text.strip() else sp.S(1)
+
+            cap = caputo_hadamard_derivative(parsed_expr, var, alpha, a0)
+            show_expr_result(
+                f"Đạo hàm Caputo–Hadamard bậc α = {sp.latex(alpha)}, mốc a = {sp.latex(a0)}",
+                cap
+            )
         except Exception as e:
-            st.error(f"Không tính được đạo hàm Caputo-Hadamard: {e}")
+            st.error(f"Không tính được Caputo–Hadamard: {e}")
 
 st.markdown("---")
 
@@ -163,7 +177,7 @@ with plot_col2:
     a_text = st.text_input("a (trái):", "-5")
     b_text = st.text_input("b (phải):", "5")
 
-# Chọn biểu thức để vẽ
+# Chọn biểu thức để vẽ: ưu tiên kết quả gần nhất nếu KHÔNG phải Integral (CH không nguyên là Integral)
 expr_to_plot: Optional[sp.Expr] = None
 if st.session_state.last_result_expr is not None and not isinstance(st.session_state.last_result_expr, sp.Integral):
     expr_to_plot = sp.simplify(st.session_state.last_result_expr)
@@ -200,6 +214,48 @@ with other_inputs:
     else:
         need_other_ok = False
 
+def _safe_float(v):
+    try:
+        return float(v)
+    except Exception:
+        return np.nan
+
+def _eval_curve(f, xs: np.ndarray) -> np.ndarray:
+    """
+    Chuẩn hoá đầu ra của f(xs) để luôn thành mảng 1D cùng shape với xs.
+    - Scalar -> broadcast
+    - (N,1)/(1,N) -> ravel về (N,)
+    - Complex nhỏ phần ảo -> lấy phần thực; ngược lại -> NaN
+    - Lọc giá trị không hữu hạn
+    """
+    try:
+        y = f(xs)
+    except Exception:
+        # fallback: đánh giá từng điểm
+        y = [_safe_float(f(float(x))) for x in xs]
+
+    y = np.asarray(y)
+
+    # Scalar -> broadcast
+    if y.ndim == 0:
+        y = np.full_like(xs, _safe_float(y))
+
+    # (N,1) hoặc (1,N) -> (N,)
+    if y.ndim > 1:
+        y = np.ravel(y)
+
+    # ép float
+    y = y.astype(float, copy=False)
+
+    # Complex -> xử lý
+    if np.iscomplexobj(y):
+        imag = np.abs(np.imag(y))
+        y = np.where(imag < 1e-12, np.real(y), np.nan)
+
+    # Lọc NaN/Inf
+    y[~np.isfinite(y)] = np.nan
+    return y
+
 plot_btn = st.button("Vẽ đồ thị", type="primary")
 
 if plot_btn:
@@ -215,13 +271,15 @@ if plot_btn:
             a = b = 0.0
 
         if not (np.isfinite(a) and np.isfinite(b)) or a >= b:
-            st.error("Điều kiện: a < b")
+            st.error("Điều kiện: a < b và là số hữu hạn.")
         elif not need_other_ok:
             st.error("Vui lòng nhập đầy đủ và hợp lệ giá trị các biến khác.")
         else:
-            plot_sym = sp.Symbol(plot_var)
+            plot_sym = sp.Symbol(plot_var, real=True)
+
             expr_plot = expr_to_plot.subs(other_vals) if other_vals else expr_to_plot
 
+            # Tạo hàm số và vẽ
             try:
                 f = sp.lambdify(plot_sym, expr_plot, modules=['numpy'])
             except Exception as e:
@@ -230,25 +288,23 @@ if plot_btn:
 
             if f is not None:
                 xs = np.linspace(a, b, 800)
-                try:
-                    ys = np.array(f(xs), dtype=float)
-                except Exception:
-                    ys_list = []
-                    for xv in xs:
-                        try:
-                            yv = float(f(float(xv)))
-                            ys_list.append(yv if np.isfinite(yv) else np.nan)
-                        except Exception:
-                            ys_list.append(np.nan)
-                    ys = np.array(ys_list, dtype=float)
+                ys = _eval_curve(f, xs)
+
+                # Phòng xa: ép cùng shape
+                if ys.shape != xs.shape:
+                    ys = np.resize(ys, xs.shape)
 
                 if np.all(~np.isfinite(ys)):
                     st.info("Không có điểm hữu hiệu để vẽ trên [a,b].")
                 else:
+                    # Nếu hàm hằng, thông báo nhẹ
+                    if float(np.nanstd(ys)) == 0.0:
+                        st.caption("Hàm (sau khi thay biến khác) là **hằng số** theo biến vẽ.")
+
                     fig, ax = plt.subplots(figsize=(8.6, 4.8), dpi=160)
                     ax.plot(xs, ys)
                     ax.set_xlabel(f"{plot_sym}")
                     ax.set_ylabel("Giá trị của hàm số")
                     ax.set_title("Đồ thị của hàm số đang khảo sát")
-                    ax.grid(True, alpha=0.1)
+                    ax.grid(True, alpha=0.2)
                     st.pyplot(fig)
