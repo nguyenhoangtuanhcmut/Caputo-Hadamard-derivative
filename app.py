@@ -100,7 +100,7 @@ with right:
     with b1:
         do_diff = st.button("Tính ĐH cổ điển", use_container_width=True)
     with b2:
-        do_caputo = st.button("Tính ĐH Caputo-Hadamard", use_container_width=True)
+        do_caputo = st.button("Tính ĐH C-H", use_container_width=True)
 
 # Hiển thị công thức gốc
 st.markdown("#### Công thức đang nhập")
