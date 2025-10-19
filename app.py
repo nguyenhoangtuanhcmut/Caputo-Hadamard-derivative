@@ -379,4 +379,149 @@ if plot_btn:
                                             ax.plot(xs, ys)
                                             ax.set_xlabel("t"); ax.set_ylabel("giá trị xấp xỉ (Simpson 1/3)")
                                             ax.set_title(f"Đồ thị: CH-f'(t) (Simpson 1/3, α={alpha_val:.4g}, a={a0_val:g})")
-                                            ax.grid(True, alpha=0.2); st.pyplot(fig) 
+                                            ax.grid(True, alpha=0.2); st.pyplot(fig)
+
+# ====================== So sánh f' và CH-f' trên cùng đồ thị ======================
+st.markdown("---")
+st.subheader("So sánh f' và CH-f' trên cùng một đồ thị")
+
+col_cmp = st.columns([2, 2, 2])
+with col_cmp[0]:
+    a_text_cmp = st.text_input("a (trái) — so sánh", a_text if 'a_text' in locals() else "-5", key="cmp_a")
+with col_cmp[1]:
+    b_text_cmp = st.text_input("b (phải) — so sánh", b_text if 'b_text' in locals() else "5", key="cmp_b")
+with col_cmp[2]:
+    Npts_cmp = st.number_input("Số điểm mẫu", min_value=100, max_value=3000, value=800, step=100, key="cmp_n")
+
+btn_cmp = st.button("Vẽ f'(t) & CH-f'(t) cùng lúc", type="primary", use_container_width=True)
+
+def _compute_classic_derivative_vals(expr: sp.Expr, t: sp.Symbol, xs: np.ndarray, subs_map: Dict[sp.Symbol, float]) -> np.ndarray:
+    expr_plot = sp.diff(sp.simplify(expr), t)
+    expr_plot = expr_plot.subs(subs_map) if subs_map else expr_plot
+    try:
+        fnum = sp.lambdify(t, sp.simplify(expr_plot), modules=['numpy'])
+    except Exception as e:
+        st.error(f"Không thể chuyển f'(t) sang hàm số: {e}")
+        return np.full_like(xs, np.nan, dtype=float)
+    return _eval_curve_numpy(fnum, xs)
+
+def _compute_ch_vals(expr: sp.Expr, t: sp.Symbol, xs: np.ndarray,
+                     alpha_val: float, a0_val: float,
+                     subs_map: Dict[sp.Symbol, float]) -> np.ndarray:
+    # α nguyên: δ^n f
+    if float(alpha_val).is_integer():
+        n = int(round(alpha_val))
+        expr_plot = delta_operator(sp.simplify(expr), t, n)
+        expr_plot = expr_plot.subs(subs_map) if subs_map else expr_plot
+        try:
+            fnum = sp.lambdify(t, sp.simplify(expr_plot), modules=['numpy'])
+        except Exception as e:
+            st.error(f"Không thể chuyển δ^{n}f sang hàm số: {e}")
+            return np.full_like(xs, np.nan, dtype=float)
+        ys = _eval_curve_numpy(fnum, xs)
+        return ys
+
+    # α không nguyên: Simpson 1/3
+    n = int(np.ceil(alpha_val))
+    base_expr = expr.subs(subs_map) if subs_map else expr
+    tau = sp.Symbol(f"{t.name}_tau", real=True, positive=True)
+    delta_n = delta_operator(sp.simplify(base_expr), t, n).subs({t: tau})
+    try:
+        f_tau_np = sp.lambdify(tau, sp.simplify(delta_n), modules=['numpy'])
+    except Exception as e:
+        st.error(f"Không thể chuyển δ^{n}f(τ) sang hàm số (numpy): {e}")
+        return np.full_like(xs, np.nan, dtype=float)
+
+    gamma_factor = 1.0 / float(sp.gamma(n - sp.Float(alpha_val)))
+    ys = np.full_like(xs, np.nan, dtype=float)
+
+    # Tính riêng từng điểm tt ∈ xs
+    for i, tt in enumerate(xs):
+        if not np.isfinite(tt) or (tt <= a0_val):
+            ys[i] = np.nan
+            continue
+        # Lưới Simpson cho τ ∈ [a0, tt - ε]
+        eps = max(1e-12, 1e-9 * (tt - a0_val))
+        N = max(400, int(0.6 * len(xs)))  # tăng nhẹ theo mật độ mẫu
+        if N % 2 == 1:
+            N += 1
+        taus = np.linspace(a0_val, tt - eps, N + 1)
+        try:
+            delta_vals = f_tau_np(taus)
+        except Exception:
+            ys[i] = np.nan
+            continue
+        with np.errstate(divide='ignore', invalid='ignore'):
+            integ_vals = (np.log(tt / taus) ** (n - alpha_val - 1.0)) * (delta_vals / taus)
+        integ_vals = np.where(np.isfinite(integ_vals), integ_vals, 0.0)
+        val = simpson_integrate(integ_vals, taus)
+        ys[i] = gamma_factor * val
+
+    return ys
+
+if btn_cmp:
+    if parsed_expr is None:
+        st.warning("Chưa có biểu thức để vẽ.")
+    else:
+        # đọc khoảng
+        try:
+            a_cmp = float(sp.N(sp.nsimplify(a_text_cmp or "-5")))
+            b_cmp = float(sp.N(sp.nsimplify(b_text_cmp or "5")))
+        except Exception:
+            st.error("Giá trị [a, b] (so sánh) không hợp lệ.")
+            a_cmp = b_cmp = 0.0
+
+        # kiểm tra input khác
+        if not (np.isfinite(a_cmp) and np.isfinite(b_cmp)) or a_cmp >= b_cmp:
+            st.error("Điều kiện: a < b và là số hữu hạn.")
+        elif alpha_text.strip() == "":
+            st.error("Vui lòng nhập bậc α để vẽ đường CH-f'(t).")
+        elif a0_text.strip() == "":
+            st.error("Vui lòng nhập cận dưới a để vẽ đường CH-f'(t).")
+        else:
+            # chuẩn hóa tham số CH
+            try:
+                alpha_val_cmp = float(sp.N(sp.nsimplify(alpha_text)))
+                a0_val_cmp = float(sp.N(sp.nsimplify(a0_text)))
+            except Exception:
+                st.error("α hoặc a không hợp lệ.")
+                alpha_val_cmp = None
+
+            if alpha_val_cmp is not None:
+                if a0_val_cmp <= 0:
+                    st.error("Cận dưới a phải > 0.")
+                else:
+                    t = get_t_symbol(parsed_expr)
+
+                    # Điểm mẫu: nếu cần đảm bảo > a0
+                    left = max(a_cmp, a0_val_cmp + (1e-9 if not float(alpha_val_cmp).is_integer() else 0.0))
+                    if left >= b_cmp:
+                        st.error("Khoảng vẽ phải thỏa a < b và b > a (và > a0 nếu vẽ CH).")
+                    else:
+                        xs = np.linspace(left, b_cmp, int(Npts_cmp))
+
+                        # 1) f'(t)
+                        ys_classic = _compute_classic_derivative_vals(parsed_expr, t, xs, other_vals)
+
+                        # 2) CH-f'(t)
+                        ys_ch = _compute_ch_vals(parsed_expr, t, xs, alpha_val_cmp, a0_val_cmp, other_vals)
+
+                        if np.all(~np.isfinite(ys_classic)) and np.all(~np.isfinite(ys_ch)):
+                            st.info("Không có điểm hữu hiệu để vẽ trên khoảng đã chọn.")
+                        else:
+                            fig, ax = plt.subplots(figsize=(9.2, 5.0), dpi=160)
+                            ax.plot(xs, ys_classic, label="f'(t) — cổ điển")
+                            ax.plot(xs, ys_ch, label=f"CH-f'(t) — α={alpha_val_cmp:g}, a={a0_val_cmp:g}")
+                            ax.set_xlabel("t")
+                            ax.set_ylabel("giá trị")
+                            ax.set_title("So sánh: f'(t) vs. Caputo–Hadamard")
+                            ax.grid(True, alpha=0.25)
+                            ax.legend()
+                            st.pyplot(fig)
+
+                            # Gợi ý nhận xét nhanh
+                            nan_ratio_classic = np.mean(~np.isfinite(ys_classic))
+                            nan_ratio_ch = np.mean(~np.isfinite(ys_ch))
+                            if nan_ratio_ch > 0.2:
+                                st.caption("ℹ️ Nhiều điểm CH-f'(t) không hữu hiệu trên khoảng này. "
+                                           "Hãy chắc rằng a>0 và chọn b đủ lớn so với a (đặc biệt khi α không nguyên).")
