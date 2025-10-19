@@ -147,7 +147,7 @@ if do_ch:
             a0 = sp.nsimplify(a0_text)
             ch_expr = caputo_hadamard_symbolic(parsed_expr, t, alpha, a0)
             show_expr_result(
-                f"CH-f'(t) – Caputo–Hadamard bậc α = {sp.latex(alpha)}, cận dưới a = {sp.latex(a0)}",
+                f"CH-f'(t) – Caputo–Hadamard bậc α = {float(sp.latex(alpha))}, cận dưới a = {sp.latex(a0)}",
                 ch_expr, "last_ch"
             )
         except Exception as e:
