@@ -59,7 +59,7 @@ def caputo_hadamard_symbolic(expr: sp.Expr, var: sp.Symbol, alpha: sp.Expr, a0: 
             return sp.simplify(expr)
         return delta_operator(expr, var, n)
     n = int(sp.ceiling(alpha))
-    tau = sp.Symbol(f"{var.name}_tau", real=True, positive=True)
+    tau = sp.Symbol(f"s", real=True, positive=True)
     delta_n_f = delta_operator(sp.simplify(expr), var, n).subs({var: tau})
     kernel_pow = n - alpha - 1
     integrand = sp.simplify(delta_n_f * (sp.log(var / tau))**(kernel_pow) / tau)
